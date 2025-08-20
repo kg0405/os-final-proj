@@ -1,0 +1,212 @@
+#include <iostream>
+#include <vector>
+#include <list>
+#include <stack>
+#include <algorithm>
+#include <random>
+#include <unistd.h> // for getopt
+#include <cstdlib>
+
+// Graph class to represent an undirected graph
+class Graph {
+private:
+    int V; // Number of vertices
+    std::vector<std::list<int>> adj; // Adjacency list
+
+    // DFS utility on temp adjacency for connectivity test
+    void DFSUtil(int v, std::vector<bool>& visited) const {
+        visited[v] = true;
+        for (int neighbor : adj[v]) {
+            if (!visited[neighbor]) {
+                DFSUtil(neighbor, visited);
+            }
+        }
+    }
+
+public:
+    Graph(int vertices) : V(vertices), adj(vertices) {}
+
+    // Add an undirected edge between u and v
+    void addEdge(int u, int v) {
+        if (u >= 0 && v >= 0 && u < V && v < V && u != v) { // Validate & avoid self-loops
+            adj[u].push_back(v);
+            adj[v].push_back(u);
+        }
+    }
+
+    // Check if an undirected edge (u,v) exists
+    bool edgeExists(int u, int v) const {
+        if (u < 0 || v < 0 || u >= V || v >= V) return false;
+        return std::find(adj[u].begin(), adj[u].end(), v) != adj[u].end();
+    }
+
+    // Get degree of a vertex
+    int degree(int v) const {
+        if (v >= 0 && v < V) {
+            return static_cast<int>(adj[v].size());
+        }
+        return 0; // Invalid vertex
+    }
+
+    // Check if the graph is connected (ignoring isolated vertices)
+    bool isConnected() const {
+        if (V == 0) return true;
+
+        // Find a vertex with nonzero degree to start DFS
+        int start = -1;
+        for (int i = 0; i < V; ++i) {
+            if (!adj[i].empty()) { start = i; break; }
+        }
+        // If no edges at all, it's "Euler-connected" by convention
+        if (start == -1) return true;
+
+        std::vector<bool> visited(V, false);
+        DFSUtil(start, visited);
+
+        // Check that all vertices with nonzero degree are visited
+        for (int i = 0; i < V; ++i) {
+            if (!adj[i].empty() && !visited[i]) return false;
+        }
+        return true;
+    }
+
+    // Get all vertices with odd degree
+    std::vector<int> oddDegreeVertices() const {
+        std::vector<int> odds;
+        for (int i = 0; i < V; ++i) {
+            if (degree(i) % 2 != 0) odds.push_back(i);
+        }
+        return odds;
+    }
+
+    // Find Euler path or circuit using Hierholzer’s algorithm
+    void findEulerTrail() const {
+        if (V == 0) {
+            std::cout << "Graph is empty, no Euler trail exists.\n";
+            return;
+        }
+        if (!isConnected()) {
+            std::cout << "Graph is not connected, no Euler path/circuit exists.\n";
+            return;
+        }
+
+        std::vector<int> odds = oddDegreeVertices();
+        if (!(odds.size() == 0 || odds.size() == 2)) {
+            std::cout << "Graph does not have an Euler path or circuit (odd vertices: "
+                      << odds.size() << ").\n";
+            return;
+        }
+
+        // Copy adjacency list for destructive traversal
+        std::vector<std::list<int>> temp_adj = adj;
+
+        // Pick start vertex: odd vertex if Euler path, else any vertex with edges (or 0 if none)
+        int start = 0;
+        if (odds.size() == 2) {
+            start = odds[0];
+        } else {
+            // For circuit: start at a vertex with edges if possible
+            for (int i = 0; i < V; ++i) {
+                if (!temp_adj[i].empty()) { start = i; break; }
+            }
+        }
+
+        std::stack<int> st;
+        std::vector<int> trail;
+        st.push(start);
+
+        while (!st.empty()) {
+            int v = st.top();
+            if (!temp_adj[v].empty()) {
+                int u = temp_adj[v].front();               // pick any edge (v,u)
+                temp_adj[v].remove(u);                      // remove v->u
+                temp_adj[u].remove(v);                      // remove u->v
+                st.push(u);
+            } else {
+                trail.push_back(v);
+                st.pop();
+            }
+        }
+
+        if (odds.empty()) {
+            std::cout << "Euler Circuit: ";
+        } else {
+            std::cout << "Euler Path: ";
+        }
+        for (auto it = trail.rbegin(); it != trail.rend(); ++it) {
+            std::cout << *it;
+            if (it + 1 != trail.rend()) std::cout << " -> ";
+        }
+        std::cout << "\n";
+    }
+
+    // Print the graph
+    void printGraph() const {
+        for (int i = 0; i < V; ++i) {
+            std::cout << "Vertex " << i << ": ";
+            for (int neighbor : adj[i]) {
+                std::cout << neighbor << " ";
+            }
+            std::cout << "\n";
+        }
+    }
+};
+
+// Function to generate a random simple graph (no multi-edges, no self-loops)
+Graph generateRandomGraph(int num_vertices, int num_edges, unsigned int seed) {
+    Graph g(num_vertices);
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> dist(0, num_vertices - 1);
+
+    int edges_added = 0;
+    while (edges_added < num_edges) {
+        int u = dist(rng);
+        int v = dist(rng);
+        if (u != v && !g.edgeExists(u, v)) {
+            g.addEdge(u, v);
+            edges_added++;
+        }
+    }
+    return g;
+}
+
+int main(int argc, char* argv[]) {
+    int num_vertices = 0, num_edges = 0;
+    unsigned int seed = 0;
+    int opt;
+
+    while ((opt = getopt(argc, argv, "v:e:s:")) != -1) {
+        switch (opt) {
+            case 'v':
+                num_vertices = std::atoi(optarg);
+                break;
+            case 'e':
+                num_edges = std::atoi(optarg);
+                break;
+            case 's':
+                seed = static_cast<unsigned int>(std::strtoul(optarg, nullptr, 10));
+                break;
+            default:
+                std::cerr << "Usage: " << argv[0] << " -v <vertices> -e <edges> -s <seed>\n";
+                return 1;
+        }
+    }
+
+    if (num_vertices <= 0 || num_edges < 0) {
+        std::cerr << "Invalid number of vertices or edges.\n";
+        return 1;
+    }
+    long long max_edges = 1LL * num_vertices * (num_vertices - 1) / 2;
+    if (num_edges > max_edges) {
+        std::cerr << "Too many edges for " << num_vertices << " vertices. Max edges: " << max_edges << "\n";
+        return 1;
+    }
+
+    Graph g = generateRandomGraph(num_vertices, num_edges, seed);
+    std::cout << "Generated Graph:\n";
+    g.printGraph();
+
+    g.findEulerTrail();
+
+    return 0;
+}
