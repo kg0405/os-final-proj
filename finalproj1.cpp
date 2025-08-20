@@ -158,15 +158,28 @@ Graph generateRandomGraph(int num_vertices, int num_edges, unsigned int seed) {
     std::mt19937 rng(seed);
     std::uniform_int_distribution<int> dist(0, num_vertices - 1);
 
+    // Add a subset of possible edges randomly without ensuring connectivity or even degrees
+    std::vector<std::pair<int, int>> possible_edges;
+    for (int u = 0; u < num_vertices; ++u) {
+        for (int v = u + 1; v < num_vertices; ++v) {
+            possible_edges.emplace_back(u, v);
+        }
+    }
+
+    // Shuffle possible edges
+    std::shuffle(possible_edges.begin(), possible_edges.end(), rng);
+
+    // Add the first num_edges edges from the shuffled list
     int edges_added = 0;
-    while (edges_added < num_edges) {
-        int u = dist(rng);
-        int v = dist(rng);
-        if (u != v && !g.edgeExists(u, v)) {
+    for (int i = 0; i < possible_edges.size() && edges_added < num_edges; ++i) {
+        int u = possible_edges[i].first;
+        int v = possible_edges[i].second;
+        if (!g.edgeExists(u, v)) {
             g.addEdge(u, v);
             edges_added++;
         }
     }
+
     return g;
 }
 
